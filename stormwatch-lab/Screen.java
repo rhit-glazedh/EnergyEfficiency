@@ -7,27 +7,39 @@ final class Screen implements Runnable {
     private final IntSupplier waiting;
     private volatile boolean running = true;
     private volatile String frame = "";
+    private static final long SCREEN_TIMEOUT_MS = 3_000;
+    private volatile long lastWake = System.currentTimeMillis();
 
     Screen(IntSupplier waiting) {
         this.waiting = waiting;
         for (Item.Kind k : Item.Kind.values()) shown.put(k, new AtomicLong());
     }
 
-    void record(Item.Kind kind) { shown.get(kind).incrementAndGet(); }
+    void record(Item.Kind kind) {
+        shown.get(kind).incrementAndGet();
+        if (kind == Item.Kind.SEVERE) lastWake = System.currentTimeMillis();
+    }
     void stop() { running = false; }
 
     public void run() {
         long lastPrint = System.currentTimeMillis();
         while (running) {
-            frame = render();
             long now = System.currentTimeMillis();
+            boolean screenOn = now - lastWake < SCREEN_TIMEOUT_MS;
+            if (screenOn) frame = render();
             if (now - lastPrint >= 10_000) {
                 System.out.printf("[app] shown: routine=%d warnings=%d refreshes=%d | waiting=%d%n",
                         shown.get(Item.Kind.ROUTINE).get(), shown.get(Item.Kind.SEVERE).get(),
                         shown.get(Item.Kind.REFRESH).get(), waiting.getAsInt());
                 lastPrint = now;
             }
-            try { Thread.sleep(2); } catch (InterruptedException e) { return; }
+            long sleepMs;
+            if (screenOn) {
+                sleepMs = 2;
+            } else {
+                sleepMs = 100;
+            }
+            try { Thread.sleep(sleepMs); } catch (InterruptedException e) { return; }
         }
     }
 
